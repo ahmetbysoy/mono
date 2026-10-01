@@ -1,0 +1,104 @@
+name: Download XAPK to Repo
+
+on:
+  push:
+    paths:
+      - '.github/workflows/download.yml'
+  workflow_dispatch:
+    inputs:
+      url:
+        description: 'Download URL'
+        required: false
+        default: 'https://data.winudf.com/XAPK/Y29tLnNjb3BlbHkubW9ub3BvbHlnb185ODA3N19lM2RjYWZmMw?_p=Y29tLnNjb3BlbHkubW9ub3BvbHlnbw%3D%3D&download_id=otr_1325104598275406&filename=MONOPOLY+GO%21_1.77.1_APKPure.xapk&full_size=187166910&is_hot=false&k=b0d1384c57f6165671c2b019fce1ec4b6ac13bac&package_name=com.scopely.monopolygo&source=web&token=1790875820-290e4ad0d0-0-57388833873418be1ce450646eae6bca'
+      filename:
+        description: 'Output filename in repo'
+        required: false
+        default: 'MONOPOLY GO!_1.77.1_APKPure.xapk'
+
+permissions:
+  contents: write
+
+jobs:
+  download-and-save:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}
+          lfs: true
+
+      - name: Download XAPK file
+        env:
+          RAW_URL: ${{ github.event.inputs.url || 'https://data.winudf.com/XAPK/Y29tLnNjb3BlbHkubW9ub3BvbHlnb185ODA3N19lM2RjYWZmMw?_p=Y29tLnNjb3BlbHkubW9ub3BvbHlnbw%3D%3D&download_id=otr_1325104598275406&filename=MONOPOLY+GO%21_1.77.1_APKPure.xapk&full_size=187166910&is_hot=false&k=b0d1384c57f6165671c2b019fce1ec4b6ac13bac&package_name=com.scopely.monopolygo&source=web&token=1790875820-290e4ad0d0-0-57388833873418be1ce450646eae6bca' }}
+          OUT_FILE: ${{ github.event.inputs.filename || 'MONOPOLY GO!_1.77.1_APKPure.xapk' }}
+        run: |
+          set -euo pipefail
+          CLEAN_URL=$(python3 -c 'import html, os; print(html.unescape(os.environ["RAW_URL"]))')
+          UA="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36"
+
+          echo "Attempting download from provided URL..."
+          if curl -L --fail --retry 3 --retry-delay 3 -A "$UA" -e "https://apkpure.com/" -o "$OUT_FILE" "$CLEAN_URL"; then
+            echo "Direct download succeeded."
+          else
+            echo "Direct URL failed or token expired; trying APKPure fallback URL for versionCode 98077..."
+            curl -L --fail --retry 3 --retry-delay 3 -A "$UA" -e "https://apkpure.com/" \
+              -o "$OUT_FILE" \
+              "https://d.apkpure.com/b/XAPK/com.scopely.monopolygo?versionCode=98077"
+          fi
+
+          ls -lh "$OUT_FILE"
+          file "$OUT_FILE"
+
+          FILE_SIZE=$(stat -c%s "$OUT_FILE")
+          if [ "$FILE_SIZE" -lt 1000000 ]; then
+            echo "Error: Downloaded file is unexpectedly small ($FILE_SIZE bytes)."
+            exit 1
+          fi
+
+      - name: Upload artifact to workflow run
+        uses: actions/upload-artifact@v4
+        with:
+          name: monopoly-go-xapk
+          path: ${{ github.event.inputs.filename || 'MONOPOLY GO!_1.77.1_APKPure.xapk' }}
+          if-no-files-found: ignore
+
+      - name: Commit and push to repository
+        env:
+          OUT_FILE: ${{ github.event.inputs.filename || 'MONOPOLY GO!_1.77.1_APKPure.xapk' }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          FILE_SIZE=$(stat -c%s "$OUT_FILE")
+          echo "Downloaded file size: $FILE_SIZE bytes"
+
+          if [ "$FILE_SIZE" -gt 100000000 ]; then
+            echo "File exceeds 100MB GitHub regular file limit (~187MB); saving via Git LFS..."
+            git lfs install
+            git lfs track "*.xapk"
+            git add .gitattributes "$OUT_FILE"
+            git commit -m "Download and save $OUT_FILE via Git LFS" || echo "Nothing new to commit"
+            if git push origin "HEAD:${GITHUB_REF_NAME}"; then
+              echo "Successfully pushed $OUT_FILE to repo via Git LFS!"
+            else
+              echo "Git LFS push failed; falling back to <95MB split chunks for standard Git..."
+              git reset --hard HEAD~1
+              git lfs uninstall || true
+              split -b 95M -d -a 3 "$OUT_FILE" "${OUT_FILE}.part"
+              rm -f "$OUT_FILE"
+              git checkout -- .gitattributes || rm -f .gitattributes
+              git add "${OUT_FILE}.part"*
+              git commit -m "Download and save $OUT_FILE (split into <95MB parts)"
+              git push origin "HEAD:${GITHUB_REF_NAME}"
+            fi
+          else
+            git lfs uninstall || true
+            rm -f .gitattributes
+            git add "$OUT_FILE"
+            git commit -m "Download and save $OUT_FILE"
+            git push origin "HEAD:${GITHUB_REF_NAME}"
+          fi
