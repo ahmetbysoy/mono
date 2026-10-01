@@ -1,0 +1,126 @@
+name: Download and Extract XAPK to Repo
+
+on:
+  push:
+    paths:
+      - '.github/workflows/download.yml'
+  workflow_dispatch:
+    inputs:
+      url:
+        description: 'Download URL'
+        required: false
+        default: 'https://data.winudf.com/XAPK/Y29tLnNjb3BlbHkubW9ub3BvbHlnb185ODA3N19lM2RjYWZmMw?_p=Y29tLnNjb3BlbHkubW9ub3BvbHlnbw%3D%3D&download_id=otr_1325104598275406&filename=MONOPOLY+GO%21_1.77.1_APKPure.xapk&full_size=187166910&is_hot=false&k=b0d1384c57f6165671c2b019fce1ec4b6ac13bac&package_name=com.scopely.monopolygo&source=web&token=1790875820-290e4ad0d0-0-57388833873418be1ce450646eae6bca'
+      extract_dir:
+        description: 'Target directory in repo for extracted files'
+        required: false
+        default: 'monopoly_go'
+
+permissions:
+  contents: write
+
+jobs:
+  download-and-extract:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}
+          lfs: true
+
+      - name: Download XAPK and extract into folder
+        env:
+          RAW_URL: ${{ github.event.inputs.url || 'https://data.winudf.com/XAPK/Y29tLnNjb3BlbHkubW9ub3BvbHlnb185ODA3N19lM2RjYWZmMw?_p=Y29tLnNjb3BlbHkubW9ub3BvbHlnbw%3D%3D&download_id=otr_1325104598275406&filename=MONOPOLY+GO%21_1.77.1_APKPure.xapk&full_size=187166910&is_hot=false&k=b0d1384c57f6165671c2b019fce1ec4b6ac13bac&package_name=com.scopely.monopolygo&source=web&token=1790875820-290e4ad0d0-0-57388833873418be1ce450646eae6bca' }}
+          EXTRACT_DIR: ${{ github.event.inputs.extract_dir || 'monopoly_go' }}
+        run: |
+          set -euo pipefail
+          OUT_FILE="/tmp/MONOPOLY_GO_1.77.1_APKPure.xapk"
+          CLEAN_URL=$(python3 -c 'import html, os; print(html.unescape(os.environ["RAW_URL"]))')
+          UA="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36"
+
+          echo "1) Downloading XAPK..."
+          if curl -L --fail --retry 3 --retry-delay 3 -A "$UA" -e "https://apkpure.com/" -o "$OUT_FILE" "$CLEAN_URL"; then
+            echo "Direct download succeeded."
+          else
+            echo "Direct URL failed or token expired; falling back to APKPure versionCode 98077..."
+            curl -L --fail --retry 3 --retry-delay 3 -A "$UA" -e "https://apkpure.com/" \
+              -o "$OUT_FILE" \
+              "https://d.apkpure.com/b/XAPK/com.scopely.monopolygo?versionCode=98077"
+          fi
+
+          ls -lh "$OUT_FILE"
+          FILE_SIZE=$(stat -c%s "$OUT_FILE")
+          if [ "$FILE_SIZE" -lt 1000000 ]; then
+            echo "Error: Downloaded file is unexpectedly small ($FILE_SIZE bytes)."
+            exit 1
+          fi
+
+          echo "2) Extracting XAPK into $EXTRACT_DIR/..."
+          rm -rf "$EXTRACT_DIR"
+          mkdir -p "$EXTRACT_DIR"
+          unzip -q -o "$OUT_FILE" -d "$EXTRACT_DIR"
+
+          echo "3) Extracting inner APK packages inside $EXTRACT_DIR/..."
+          shopt -s nullglob
+          for apk in "$EXTRACT_DIR"/*.apk; do
+            apk_base=$(basename "$apk" .apk)
+            target_subdir="$EXTRACT_DIR/$apk_base"
+            echo "Unpacking $apk -> $target_subdir/"
+            mkdir -p "$target_subdir"
+            unzip -q -o "$apk" -d "$target_subdir"
+            rm -f "$apk"
+          done
+
+          echo "Extracted directory structure:"
+          find "$EXTRACT_DIR" -maxdepth 3 | head -n 60
+
+      - name: Upload original XAPK as workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: monopoly-go-xapk
+          path: /tmp/MONOPOLY_GO_1.77.1_APKPure.xapk
+          if-no-files-found: ignore
+
+      - name: Commit and push extracted folder to repository
+        env:
+          EXTRACT_DIR: ${{ github.event.inputs.extract_dir || 'monopoly_go' }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          # Handle any single file > 95MB so GitHub's 100MB file limit never blocks the push
+          LARGE_FILES=$(find "$EXTRACT_DIR" -type f -size +95M)
+          if [ -n "$LARGE_FILES" ]; then
+            echo "Found files > 95MB:"
+            echo "$LARGE_FILES"
+            git lfs install
+            while IFS= read -r lf; do
+              [ -z "$lf" ] && continue
+              rel_path="${lf#./}"
+              git lfs track "$rel_path"
+            done <<< "$LARGE_FILES"
+            git add .gitattributes
+          fi
+
+          git add "$EXTRACT_DIR"
+          git commit -m "Extract MONOPOLY GO! 1.77.1 XAPK contents into $EXTRACT_DIR/" || echo "No changes to commit"
+
+          if git push origin "HEAD:${GITHUB_REF_NAME}"; then
+            echo "Successfully pushed extracted files in $EXTRACT_DIR/ to repository!"
+          else
+            echo "Push with LFS failed; splitting files >95MB into parts for direct Git push..."
+            git reset --hard HEAD~1
+            git lfs uninstall || true
+            while IFS= read -r lf; do
+              [ -z "$lf" ] && continue
+              split -b 90M -d -a 3 "$lf" "${lf}.part"
+              rm -f "$lf"
+            done <<< "$LARGE_FILES"
+            git checkout -- .gitattributes || true
+            git add "$EXTRACT_DIR"
+            git commit -m "Extract MONOPOLY GO! 1.77.1 XAPK contents into $EXTRACT_DIR/ (large files split <95MB)"
+            git push origin "HEAD:${GITHUB_REF_NAME}"
+          fi
