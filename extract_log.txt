@@ -1,0 +1,11 @@
+=== Starting XAPK Download & Extract (Thu Oct  1 20:01:55 UTC 2026) ===
+Attempt 1: Downloading from provided winudf URL via curl...
+Checking /tmp/MONOPOLY_GO_1.77.1_APKPure.xapk: 187166910 bytes
+Checking /tmp/MONOPOLY_GO_1.77.1_APKPure.xapk: 187166910 bytes
+Extracting /tmp/MONOPOLY_GO_1.77.1_APKPure.xapk into monopoly_go/...
+Extracted top-level XAPK files: ['manifest.json', 'config.arm64_v8a.apk', 'com.scopely.monopolygo.apk']
+Extracting inner APK: com.scopely.monopolygo.apk -> monopoly_go/com.scopely.monopolygo/
+Extracting inner APK: config.arm64_v8a.apk -> monopoly_go/config.arm64_v8a/
+Splitting large file (131488488 bytes > 90MB): monopoly_go/config.arm64_v8a/lib/arm64-v8a/libil2cpp.so
+Extraction completed successfully!
+Python step exited with code: 0
