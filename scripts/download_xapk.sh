@@ -35,3 +35,4 @@ for apk in "$EXTRACT_DIR"/*.apk; do
 done
 
 echo "Done! Extracted contents are in $EXTRACT_DIR/"
+# test
