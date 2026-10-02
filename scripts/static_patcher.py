@@ -1,22 +1,12 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-MONOPOLY GO! (v1.77.1 / 98077) — ARM64 & APK Statik Yama Aracı (Android 11/12)
-================================================================================
+MONOPOLY GO! (v1.77.1 / 98077) — ARM64 & Tekil APK Statik Yama Aracı (Android 11/12)
+====================================================================================
 Bu betik, hedef ikili dosyalardaki (libil2cpp.so, libtoolChecker.so,
 libbugsnag-root-detection.so, res/xml/network_security_config.xml,
 AndroidManifest.xml ve assets/EnvironmentConfig.json) gerçek dosya ofsetlerini
 ve orijinal bayt dizilerini doğrulayarak güvenli statik yama uygular.
-
-Kullanım:
-  1. Hedef ofsetlerdeki gerçek baytları doğrula (salt-okunur):
-     python3 scripts/static_patcher.py verify --root /home/user/mono/out/monopoly_go
-
-  2. Statik yamaları uygula (otomatik .bak yedekli):
-     python3 scripts/static_patcher.py apply --root /home/user/mono/out/monopoly_go
-
-  3. Orijinal baytlara geri dön (restore):
-     python3 scripts/static_patcher.py restore --root /home/user/mono/out/monopoly_go
 """
 
 import argparse
@@ -187,7 +177,7 @@ PATCH_TABLE: List[BinaryPatch] = [
     ),
 
     # ------------------------------------------------------------------------
-    # GRUP 6: Android 11/12 (API 29+) Kurulum Uyumluluğu (AndroidManifest.xml)
+    # GRUP 6: Android 11/12 (API 29+) & Tekil APK Uyumluluğu (AndroidManifest.xml)
     # ------------------------------------------------------------------------
     BinaryPatch(
         id="manifest_base_min_sdk_29",
@@ -210,6 +200,39 @@ PATCH_TABLE: List[BinaryPatch] = [
         orig_bytes=bytes.fromhex("20000000"),
         patch_bytes=bytes.fromhex("1d000000"),
         asm_comment="AXML ResID 0x0101020c (minSdkVersion): 32 (0x20) -> 29 (0x1d)",
+    ),
+    BinaryPatch(
+        id="manifest_disable_required_split_types_resid",
+        group="manifest",
+        description="com.scopely.monopolygo/AndroidManifest.xml: requiredSplitTypes & splitTypes ResID sıfırlama (Tekil APK desteği)",
+        rel_path="com.scopely.monopolygo/AndroidManifest.xml",
+        vaddr=0x0000614C,
+        file_offset=0x0000614C,
+        orig_bytes=bytes.fromhex("4e0601014f060101"),
+        patch_bytes=bytes.fromhex("0000000000000000"),
+        asm_comment="AXML ResID 0x0101064e & 0x0101064f -> 0x00000000",
+    ),
+    BinaryPatch(
+        id="manifest_clear_required_split_types_attr",
+        group="manifest",
+        description="com.scopely.monopolygo/AndroidManifest.xml: requiredSplitTypes='base__abi' -> '' (Tekil APK desteği)",
+        rel_path="com.scopely.monopolygo/AndroidManifest.xml",
+        vaddr=0x00006210,
+        file_offset=0x00006210,
+        orig_bytes=bytes.fromhex("2501000039000000a000000008000003a0000000"),
+        patch_bytes=bytes.fromhex("250100003a0000003c000000080000033c000000"),
+        asm_comment="AXML attr requiredSplitTypes string index 0xa0 ('base__abi') -> 0x3c ('')",
+    ),
+    BinaryPatch(
+        id="manifest_disable_vending_splits_required",
+        group="manifest",
+        description="com.scopely.monopolygo/AndroidManifest.xml: com.android.vending.splits.required -> false (Tekil APK desteği)",
+        rel_path="com.scopely.monopolygo/AndroidManifest.xml",
+        vaddr=0x0000CBB8,
+        file_offset=0x0000CBB8,
+        orig_bytes=bytes.fromhex("ffffffff"),
+        patch_bytes=bytes.fromhex("00000000"),
+        asm_comment="AXML meta-data com.android.vending.splits.required: true (0xffffffff) -> false (0x0)",
     ),
 ]
 
