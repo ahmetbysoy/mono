@@ -1,0 +1,26 @@
+name: Run XAPK Extract
+
+on:
+  push:
+    paths:
+      - '.github/workflows/run.yml'
+      - 'scripts/download_xapk.sh'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  extract:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}
+
+      - name: Run download and extract script
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: bash scripts/download_xapk.sh

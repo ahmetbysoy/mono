@@ -1,0 +1,16 @@
+{
+  "_serverEnvironment": 3,
+  "_apiUrl": "https://api.prod.tophat.withbuddies.com",
+  "_buildType": 2,
+  "_apiVersion": 0,
+  "_mockPurchases": false,
+  "_logLevel": 4,
+  "_releaseVersion": "98077",
+  "_consoleRequireEntryCode": false,
+  "_fromAppCenter": false,
+  "_flexionBuild": false,
+  "_scaBundleId": "com.scopely.monopolygo.companion",
+  "_SCAUrlScheme": "monopolygo.companion",
+  "_appleTeamId": "",
+  "_environmentAccessKey": ""
+}

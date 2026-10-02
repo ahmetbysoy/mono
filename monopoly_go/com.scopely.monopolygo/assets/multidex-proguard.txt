@@ -1,0 +1,13 @@
+# Added by Playgami AndroidLibGradlePostGradleStep
+-keep class com.scopely.notifications.** { *; }
+-keep class com.scopely.unity.** { *; }
+-keep class com.scopely.utils.** { *; }
+-keep class com.scopely.ActivityManager { *; }
+-keep class com.scopely.ActivityManagerFactory { *; }
+-keep class com.helpshift.support.providers.** { *; }
+# Added by Playgami ScopelyAttributionAdjustAndroidBuildProcess
+-keep class com.adjust.sdk.AdjustReferrerReceiver
+-keep public class com.adjust.sdk.** { *; }
+-keep class com.sec.android.app.samsungapps.installreferrer.** { *; }
+-keep class com.miui.referrer.** {*;}
+-keep class com.bun.miitmdid.core.** { *; }
