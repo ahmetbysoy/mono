@@ -38,7 +38,7 @@ rm -f "$MONO_DIR/com.scopely.monopolygo/stamp-cert-sha256" \
       "$MONO_DIR/config.arm64_v8a/META-INF/"*.EC \
       "$MONO_DIR/config.arm64_v8a/META-INF/MANIFEST.MF" || true
 
-# 3. Statik yamaları doğrula ve uygula (16 ikili yama: libil2cpp, root, SSL unpin, minSdk=29, Tekil APK split bypass)
+# 3. Statik yamaları doğrula ve uygula (29 ikili yama: libil2cpp, libanort, libanogs, root, SSL unpin, minSdk=29, Tekil APK split bypass)
 echo "[3/6] Statik ikili yamalar uygulanıyor..."
 python3 "$ROOT_DIR/scripts/static_patcher.py" apply --root "$MONO_DIR" --no-backup | tee "$OUT_DIR/patch_verify_log.txt"
 python3 "$ROOT_DIR/scripts/static_patcher.py" verify --root "$MONO_DIR" >> "$OUT_DIR/patch_verify_log.txt"
@@ -75,6 +75,23 @@ sign_and_verify_apk() {
   "$APKSIGNER" verify --verbose "$out_signed" | tee -a "$OUT_DIR/patch_verify_log.txt"
 }
 
+build_unity_apk() {
+  local src_dir="$1"
+  local unaligned_apk="$2"
+  local signed_apk="$3"
+  rm -f "$unaligned_apk" "$signed_apk"
+  (
+    cd "$src_dir"
+    # KRİTİK: Unity AssetManager (mmap / AAsset_openFileDescriptor) ve Tencent ACE (__ac*)
+    # dosyalarının açılışta çökmemesi için resources.arsc ve tüm assets/ dizini
+    # SIKIŞTIRILMADAN (STORE / -0) paketlenir:
+    zip -q -0 -r "$unaligned_apk" resources.arsc assets
+    # Geri kalan dosyalar (DEX, AndroidManifest.xml, lib/*.so, res/* vb.) eklenir:
+    zip -q -r -n .png:.ogg:.mp3:.mp4:.webp:.arsc "$unaligned_apk" . -x "resources.arsc" "assets/*"
+  )
+  sign_and_verify_apk "$unaligned_apk" "$signed_apk"
+}
+
 # 5. XAPK (Split APK) ve TEKİL BİRLEŞTİRİLMİŞ APK (Single Merged APK) oluştur
 echo "[5/6] Split XAPK ve Tek Tıkla Kurulabilir Tekil APK (.apk) paketleri oluşturuluyor..."
 
@@ -86,11 +103,7 @@ echo "[5/6] Split XAPK ve Tek Tıkla Kurulabilir Tekil APK (.apk) paketleri olu�
 sign_and_verify_apk /tmp/config.arm64_v8a.unaligned.apk "$STAGE_DIR/config.arm64_v8a.apk"
 
 # 5b. Split com.scopely.monopolygo.apk (XAPK için)
-(
-  cd "$MONO_DIR/com.scopely.monopolygo"
-  zip -q -r -n .arsc:.unity3d:.resS:.resource:.dat:.tsb:.png:.ogg:.mp3:.mp4 /tmp/base_split.unaligned.apk .
-)
-sign_and_verify_apk /tmp/base_split.unaligned.apk "$STAGE_DIR/com.scopely.monopolygo.apk"
+build_unity_apk "$MONO_DIR/com.scopely.monopolygo" /tmp/base_split.unaligned.apk "$STAGE_DIR/com.scopely.monopolygo.apk"
 
 cp "$MONO_DIR/manifest.json" "$STAGE_DIR/manifest.json"
 if [ -f "$MONO_DIR/com.scopely.monopolygo/res/mipmap-xxxhdpi-v4/app_icon.png" ]; then
@@ -109,22 +122,27 @@ echo "[*] config.arm64_v8a/lib/arm64-v8a/*.so dosyaları tekil APK içine birle�
 cp -r "$MONO_DIR/config.arm64_v8a/lib" "$MONO_DIR/com.scopely.monopolygo/"
 
 APK_STD="$OUT_DIR/MONOPOLY_GO_1.77.1_Patched_arm64.apk"
-(
-  cd "$MONO_DIR/com.scopely.monopolygo"
-  zip -q -r -n .arsc:.unity3d:.resS:.resource:.dat:.tsb:.png:.ogg:.mp3:.mp4 /tmp/merged_std.unaligned.apk .
-)
-sign_and_verify_apk /tmp/merged_std.unaligned.apk "$APK_STD"
+build_unity_apk "$MONO_DIR/com.scopely.monopolygo" /tmp/merged_std.unaligned.apk "$APK_STD"
 echo "[OK] Tekil Standart Yamalı APK hazır: $(ls -lh "$APK_STD")"
 
-# 5d. Termux Yerel Sunucu (http://127.0.0.1:8080) Ön-Ayarlı Tekil APK
+echo "[*] Unity assets/bin/Data/* ve __ac* STORE (0% sıkıştırma) doğrulaması:" | tee -a "$OUT_DIR/patch_verify_log.txt"
+unzip -lv "$APK_STD" | grep -E "resources\.arsc|__ac|globalgamemanagers|level0|boot\.config" | head -n 15 | tee -a "$OUT_DIR/patch_verify_log.txt"
+
+# 5d. Termux Yerel Sunucu (http://127.0.0.1:8080) Ön-Ayarlı Tekil APK ve XAPK
 python3 "$ROOT_DIR/scripts/static_patcher.py" apply --root "$MONO_DIR" --groups env_config --api-url "http://127.0.0.1:8080" --no-backup
+
 APK_TERMUX="$OUT_DIR/MONOPOLY_GO_1.77.1_Patched_TermuxLocal_arm64.apk"
-(
-  cd "$MONO_DIR/com.scopely.monopolygo"
-  zip -q -r -n .arsc:.unity3d:.resS:.resource:.dat:.tsb:.png:.ogg:.mp3:.mp4 /tmp/merged_termux.unaligned.apk .
-)
-sign_and_verify_apk /tmp/merged_termux.unaligned.apk "$APK_TERMUX"
+build_unity_apk "$MONO_DIR/com.scopely.monopolygo" /tmp/merged_termux.unaligned.apk "$APK_TERMUX"
 echo "[OK] Tekil Termux Yamalı APK hazır: $(ls -lh "$APK_TERMUX")"
+
+cp -r "$STAGE_DIR"/* "$TERMUX_STAGE_DIR"/
+rm -rf "$MONO_DIR/com.scopely.monopolygo/lib"
+build_unity_apk "$MONO_DIR/com.scopely.monopolygo" /tmp/base_termux.unaligned.apk "$TERMUX_STAGE_DIR/com.scopely.monopolygo.apk"
+XAPK_TERMUX="$OUT_DIR/MONOPOLY_GO_1.77.1_Patched_TermuxLocal_arm64.xapk"
+(
+  cd "$TERMUX_STAGE_DIR"
+  zip -q -r -0 "$XAPK_TERMUX" .
+)
 
 (
   cd "$OUT_DIR"
@@ -139,6 +157,7 @@ gh release upload "$RELEASE_TAG" \
   "$APK_STD" \
   "$APK_TERMUX" \
   "$XAPK_STD" \
+  "$XAPK_TERMUX" \
   "$OUT_DIR/SHA256SUMS.txt" \
   "$OUT_DIR/patch_verify_log.txt" \
   --clobber

@@ -3,8 +3,8 @@
 """
 MONOPOLY GO! (v1.77.1 / 98077) — ARM64 & Tekil APK Statik Yama Aracı (Android 11/12)
 ====================================================================================
-Bu betik, hedef ikili dosyalardaki (libil2cpp.so, libtoolChecker.so,
-libbugsnag-root-detection.so, res/xml/network_security_config.xml,
+Bu betik, hedef ikili dosyalardaki (libil2cpp.so, libanort.so, libanogs.so,
+libtoolChecker.so, libbugsnag-root-detection.so, res/xml/network_security_config.xml,
 AndroidManifest.xml ve assets/EnvironmentConfig.json) gerçek dosya ofsetlerini
 ve orijinal bayt dizilerini doğrulayarak güvenli statik yama uygular.
 """
@@ -140,7 +140,155 @@ PATCH_TABLE: List[BinaryPatch] = [
     ),
 
     # ------------------------------------------------------------------------
-    # GRUP 5: Android AXML SSL Sertifika Sabitleme (network_security_config.xml)
+    # GRUP 5: Tencent ACE / AnoApplication CRC32, Sertifika & Çökertme Koruması
+    #         (libanort.so & libanogs.so — Başlangıçta Kapanma / Crash Çözümü)
+    # ------------------------------------------------------------------------
+    BinaryPatch(
+        id="anort_tsb_file_crc_bypass",
+        group="ace_bypass",
+        description="libanort.so: assets/__acinfo.tsb CRC32 doğrulaması -> her zaman eşleşti (w8 = w9)",
+        rel_path="config.arm64_v8a/lib/arm64-v8a/libanort.so",
+        vaddr=0x00063918,
+        file_offset=0x00063918,
+        orig_bytes=bytes.fromhex("2801881a"),
+        patch_bytes=bytes.fromhex("e803092a"),
+        asm_comment="csel w8, w9, w8, eq -> mov w8, w9",
+    ),
+    BinaryPatch(
+        id="anort_so_section_crc_bypass",
+        group="ace_bypass",
+        description="libanort.so: SOBASE_libil2cpp.so .text CRC32 doğrulaması -> her zaman eşleşti (w8 = w9)",
+        rel_path="config.arm64_v8a/lib/arm64-v8a/libanort.so",
+        vaddr=0x00092D7C,
+        file_offset=0x00092D7C,
+        orig_bytes=bytes.fromhex("4801891a"),
+        patch_bytes=bytes.fromhex("e803092a"),
+        asm_comment="csel w8, w9, w10, eq -> mov w8, w9",
+    ),
+    BinaryPatch(
+        id="anort_crash_corrupt_state_disable",
+        group="ace_bypass",
+        description="libanort.so: crash_44690 ([x5,#0x498]=0 SIGSEGV tetikleyicisi) -> return 0",
+        rel_path="config.arm64_v8a/lib/arm64-v8a/libanort.so",
+        vaddr=0x00044690,
+        file_offset=0x00044690,
+        orig_bytes=bytes.fromhex("fd7bbea9f44f01a9"),
+        patch_bytes=bytes.fromhex("00008052c0035fd6"),
+        asm_comment="mov w0, #0; ret",
+    ),
+    BinaryPatch(
+        id="anort_kill_process_disable",
+        group="ace_bypass",
+        description="libanort.so: kill_bb8e0 (süreç sonlandırıcı) -> return 0",
+        rel_path="config.arm64_v8a/lib/arm64-v8a/libanort.so",
+        vaddr=0x000BB8E0,
+        file_offset=0x000BB8E0,
+        orig_bytes=bytes.fromhex("fd7bbaa9fb0b00f9"),
+        patch_bytes=bytes.fromhex("00008052c0035fd6"),
+        asm_comment="mov w0, #0; ret",
+    ),
+    BinaryPatch(
+        id="anort_kill_dispatcher_disable",
+        group="ace_bypass",
+        description="libanort.so: kill_fd4c8 (bütünlük hatası sonlandırıcısı) -> return 0",
+        rel_path="config.arm64_v8a/lib/arm64-v8a/libanort.so",
+        vaddr=0x000FD4C8,
+        file_offset=0x000FD4C8,
+        orig_bytes=bytes.fromhex("fd7bbaa9fc6f01a9"),
+        patch_bytes=bytes.fromhex("00008052c0035fd6"),
+        asm_comment="mov w0, #0; ret",
+    ),
+    BinaryPatch(
+        id="anort_crash_corrupt_bss_disable",
+        group="ace_bypass",
+        description="libanort.so: crash_fdc84 (.bss 0x1d3720 tablo bozucusu) -> return 0",
+        rel_path="config.arm64_v8a/lib/arm64-v8a/libanort.so",
+        vaddr=0x000FDC84,
+        file_offset=0x000FDC84,
+        orig_bytes=bytes.fromhex("ff8300d1fd7b01a9"),
+        patch_bytes=bytes.fromhex("00008052c0035fd6"),
+        asm_comment="mov w0, #0; ret",
+    ),
+    BinaryPatch(
+        id="anort_crash_corrupt_stack_disable",
+        group="ace_bypass",
+        description="libanort.so: crash_febbc (yığın/stack bozucusu) -> return 0",
+        rel_path="config.arm64_v8a/lib/arm64-v8a/libanort.so",
+        vaddr=0x000FEBBC,
+        file_offset=0x000FEBBC,
+        orig_bytes=bytes.fromhex("fd7bbca9fc5f01a9"),
+        patch_bytes=bytes.fromhex("00008052c0035fd6"),
+        asm_comment="mov w0, #0; ret",
+    ),
+    BinaryPatch(
+        id="anogs_kill_self_sigkill_nop",
+        group="ace_bypass",
+        description="libanogs.so: 0x1c82b8 bl kill(getpid(), 9) -> nop",
+        rel_path="config.arm64_v8a/lib/arm64-v8a/libanogs.so",
+        vaddr=0x001C82B8,
+        file_offset=0x001C82B8,
+        orig_bytes=bytes.fromhex("f6280d94"),
+        patch_bytes=bytes.fromhex("1f2003d5"),
+        asm_comment="nop",
+    ),
+    BinaryPatch(
+        id="anogs_crash_corrupt_mem_disable",
+        group="ace_bypass",
+        description="libanogs.so: crash_2130cc (bellek bozucu) -> return 0",
+        rel_path="config.arm64_v8a/lib/arm64-v8a/libanogs.so",
+        vaddr=0x002130CC,
+        file_offset=0x002130CC,
+        orig_bytes=bytes.fromhex("fd7bbea9f44f01a9"),
+        patch_bytes=bytes.fromhex("00008052c0035fd6"),
+        asm_comment="mov w0, #0; ret",
+    ),
+    BinaryPatch(
+        id="anogs_cert_verify_crash_disable",
+        group="ace_bypass",
+        description="libanogs.so: cert_check_2b51cc (official_cert_md5 / cert_crash kontrolü) -> return 0",
+        rel_path="config.arm64_v8a/lib/arm64-v8a/libanogs.so",
+        vaddr=0x002B51CC,
+        file_offset=0x002B51CC,
+        orig_bytes=bytes.fromhex("ff8306d1fd7b14a9"),
+        patch_bytes=bytes.fromhex("00008052c0035fd6"),
+        asm_comment="mov w0, #0; ret",
+    ),
+    BinaryPatch(
+        id="anogs_crash_manager_trigger_disable",
+        group="ace_bypass",
+        description="libanogs.so: CrashManager::TriggerCrash (0x2e6b54, 43 bütünlük/anti-cheat çağrısı) -> return 0",
+        rel_path="config.arm64_v8a/lib/arm64-v8a/libanogs.so",
+        vaddr=0x002E6B54,
+        file_offset=0x002E6B54,
+        orig_bytes=bytes.fromhex("fd7bbda9f65701a9"),
+        patch_bytes=bytes.fromhex("00008052c0035fd6"),
+        asm_comment="mov w0, #0; ret",
+    ),
+    BinaryPatch(
+        id="anogs_crash_manager_docrash_disable",
+        group="ace_bypass",
+        description="libanogs.so: CrashManager::DoCrash (0x2e6c64, kasıtlı SIGSEGV/bellek sıfırlama) -> return 0",
+        rel_path="config.arm64_v8a/lib/arm64-v8a/libanogs.so",
+        vaddr=0x002E6C64,
+        file_offset=0x002E6C64,
+        orig_bytes=bytes.fromhex("fd7bbba9fc6701a9"),
+        patch_bytes=bytes.fromhex("00008052c0035fd6"),
+        asm_comment="mov w0, #0; ret",
+    ),
+    BinaryPatch(
+        id="anogs_crash_manager_invoke_disable",
+        group="ace_bypass",
+        description="libanogs.so: CrashManager::InvokeCrash (0x2ea660, gecikmeli çökertme tetikleyicisi) -> return 0",
+        rel_path="config.arm64_v8a/lib/arm64-v8a/libanogs.so",
+        vaddr=0x002EA660,
+        file_offset=0x002EA660,
+        orig_bytes=bytes.fromhex("ff4301d1fd7b02a9"),
+        patch_bytes=bytes.fromhex("00008052c0035fd6"),
+        asm_comment="mov w0, #0; ret",
+    ),
+
+    # ------------------------------------------------------------------------
+    # GRUP 6: Android AXML SSL Sertifika Sabitleme (network_security_config.xml)
     # ------------------------------------------------------------------------
     BinaryPatch(
         id="axml_unpin_api_dev",
@@ -177,7 +325,7 @@ PATCH_TABLE: List[BinaryPatch] = [
     ),
 
     # ------------------------------------------------------------------------
-    # GRUP 6: Android 11/12 (API 29+) & Tekil APK Uyumluluğu (AndroidManifest.xml)
+    # GRUP 7: Android 11/12 (API 29+) & Tekil APK Uyumluluğu (AndroidManifest.xml)
     # ------------------------------------------------------------------------
     BinaryPatch(
         id="manifest_base_min_sdk_29",
@@ -359,7 +507,7 @@ def main():
     parser.add_argument(
         "--groups",
         default="all",
-        help="Uygulanacak yama grupları (virgülle ayrılmış: all,validation,integrity,gameplay,root,ssl_pinning,manifest,env_config)",
+        help="Uygulanacak yama grupları (virgülle ayrılmış: all,validation,integrity,gameplay,root,ace_bypass,ssl_pinning,manifest,env_config)",
     )
     parser.add_argument("--api-url", default=None, help="EnvironmentConfig.json için özel _apiUrl (ör. http://127.0.0.1:8080)")
     parser.add_argument("--no-backup", action="store_true", help=".bak yedek dosyası oluşturma (CI/XAPK paketleme için)")
